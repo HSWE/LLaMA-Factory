@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# changed for poc, need to refactor
 from .chatbot import create_chat_box
 from .eval import create_eval_tab
 from .export import create_export_tab
 from .footer import create_footer
 from .infer import create_infer_tab
-from .top import create_top
+from .top_custom import create_top
 from .train import create_train_tab
 
 
