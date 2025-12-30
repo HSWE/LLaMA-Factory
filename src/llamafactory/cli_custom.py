@@ -12,22 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# changed for poc, need to refactor
-from .chatbot import create_chat_box
-from .eval import create_eval_tab
-from .export import create_export_tab
-from .footer_custom import create_footer
-from .infer import create_infer_tab
-from .top_custom import create_top
-from .train import create_train_tab
+
+def main():
+    from .extras.misc import is_env_enabled
+
+    if is_env_enabled("USE_V1"):
+        from .v1 import launcher
+    else:
+        from . import launcher
+
+    launcher.launch()
 
 
-__all__ = [
-    "create_chat_box",
-    "create_eval_tab",
-    "create_export_tab",
-    "create_footer",
-    "create_infer_tab",
-    "create_top",
-    "create_train_tab",
-]
+if __name__ == "__main__":
+    from multiprocessing import freeze_support
+
+    freeze_support()
+    main()

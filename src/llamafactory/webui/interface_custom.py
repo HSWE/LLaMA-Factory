@@ -35,7 +35,8 @@ if is_gradio_available():
     import gradio as gr
 
 
-# Custom main ui page here
+# Customized UI main page here
+# Arrange & combine components
 def create_ui(demo_mode: bool = False) -> "gr.Blocks":
     engine = Engine(demo_mode=demo_mode, pure_chat=False)
     hostname = os.getenv("HOSTNAME", os.getenv("COMPUTERNAME", platform.node())).split(".")[0]
@@ -43,18 +44,25 @@ def create_ui(demo_mode: bool = False) -> "gr.Blocks":
     with gr.Blocks(title=f"LLaMA Factory ({hostname})", css=CSS) as demo:
         title = gr.HTML()
         subtitle = gr.HTML()
+
         if demo_mode:
             gr.DuplicateButton(value="Duplicate Space for private use", elem_classes="duplicate-button")
 
         # Headers: empty html block, filled when enging.change_lang called
         engine.manager.add_elems("head", {"title": title, "subtitle": subtitle})
 
-        # gpu usage
+        # TODO: Dataset upload
+        # with gr.Tab("Chat"):
+        #     engine.manager.add_elems("infer", create_infer_tab(engine))
+
+        # gpu usage bar
         engine.manager.add_elems("footer", create_footer())
 
+        # task list + model configs
         engine.manager.add_elems("top", create_top())
         lang: gr.Dropdown = engine.manager.get_elem_by_id("top.lang")
 
+        # Train/Val/Infer config tabs
         with gr.Tab("Train"):
             engine.manager.add_elems("train", create_train_tab(engine))
 
@@ -63,12 +71,6 @@ def create_ui(demo_mode: bool = False) -> "gr.Blocks":
 
         with gr.Tab("Chat"):
             engine.manager.add_elems("infer", create_infer_tab(engine))
-
-        # TODO: Dataset upload
-        # with gr.Tab("Chat"):
-        #     engine.manager.add_elems("infer", create_infer_tab(engine))
-
-        # TODO: Training jobs list
 
         if not demo_mode:
             with gr.Tab("Export"):
