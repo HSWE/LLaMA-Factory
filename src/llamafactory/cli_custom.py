@@ -17,11 +17,12 @@ def main():
     from .extras.misc import is_env_enabled
 
     if is_env_enabled("USE_V1"):
-        from .v1 import launcher
+        # from .v1 import launcher
+        pass
     else:
-        from . import launcher
+        from . import launcher_custom
 
-    launcher.launch()
+    launcher_custom.launch()
 
 
 if __name__ == "__main__":

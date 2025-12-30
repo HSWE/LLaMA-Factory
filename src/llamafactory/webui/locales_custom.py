@@ -366,6 +366,23 @@ LOCALES = {
             "value": "データセットをプレビュー",
         },
     },
+    "data_upload_btn": {
+        "en": {
+            "value": "Upload dataset",
+        },
+        "ru": {
+            "value": "Просмотреть набор данных",
+        },
+        "zh": {
+            "value": "预览数据集",
+        },
+        "ko": {
+            "value": "데이터셋 미리보기",
+        },
+        "ja": {
+            "value": "データセットをプレビュー",
+        },
+    },
     "preview_count": {
         "en": {
             "label": "Count",
@@ -2378,6 +2395,23 @@ LOCALES = {
         "ja": {
             "label": "オフロードを使用",
             "info": "DeepSpeed オフロードを使用します（速度が遅くなります）。",
+        },
+    },
+    "output_logger": {
+        "en": {
+            "label": "Output logs",
+        },
+        "ru": {
+            "label": "Output logs",
+        },
+        "zh": {
+            "label": "Output logs",
+        },
+        "ko": {
+            "label": "Output logs",
+        },
+        "ja": {
+            "label": "Output logs",
         },
     },
     "output_box": {

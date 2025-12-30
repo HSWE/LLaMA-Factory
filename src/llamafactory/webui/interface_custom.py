@@ -28,7 +28,7 @@ from .components import (
     create_train_tab,
 )
 from .css import CSS
-from .engine import Engine
+from .engine_custom import Engine
 
 
 if is_gradio_available():

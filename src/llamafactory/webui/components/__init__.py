@@ -19,7 +19,7 @@ from .export import create_export_tab
 from .footer_custom import create_footer
 from .infer import create_infer_tab
 from .top_custom import create_top
-from .train import create_train_tab
+from .train_custom import create_train_tab
 
 
 __all__ = [
