@@ -29,6 +29,7 @@ from .components import (
 )
 from .css import CSS
 from .engine_custom import Engine
+from .session_store import session_store
 
 
 if is_gradio_available():
@@ -38,46 +39,88 @@ if is_gradio_available():
 # Customized UI main page here
 # Arrange & combine components
 def create_ui(demo_mode: bool = False) -> "gr.Blocks":
-    engine = Engine(demo_mode=demo_mode, pure_chat=False)
+    ui_engine = Engine(demo_mode=demo_mode, pure_chat=False)
     hostname = os.getenv("HOSTNAME", os.getenv("COMPUTERNAME", platform.node())).split(".")[0]
 
     with gr.Blocks(title=f"LLaMA Factory ({hostname})", css=CSS) as demo:
+        # get session id
+        session_id = gr.State()
+        session_label = gr.Markdown()
+
         title = gr.HTML()
         subtitle = gr.HTML()
 
         if demo_mode:
             gr.DuplicateButton(value="Duplicate Space for private use", elem_classes="duplicate-button")
 
+        # Init empty ui components, later inject with session engine
         # Headers: empty html block, filled when enging.change_lang called
-        engine.manager.add_elems("head", {"title": title, "subtitle": subtitle})
+        ui_engine.manager.add_elems("head", {"title": title, "subtitle": subtitle})
 
         # TODO: Dataset upload
         # with gr.Tab("Chat"):
         #     engine.manager.add_elems("infer", create_infer_tab(engine))
 
         # gpu usage bar
-        engine.manager.add_elems("footer", create_footer())
+        ui_engine.manager.add_elems("footer", create_footer())
 
         # task list + model configs
-        engine.manager.add_elems("top", create_top())
-        lang: gr.Dropdown = engine.manager.get_elem_by_id("top.lang")
+        ui_engine.manager.add_elems("top", create_top())
+        lang: gr.Dropdown = ui_engine.manager.get_elem_by_id("top.lang")
 
         # Train/Val/Infer config tabs
         with gr.Tab("Train"):
-            engine.manager.add_elems("train", create_train_tab(engine))
-
+            ui_engine.manager.add_elems("train", create_train_tab(ui_engine))
         with gr.Tab("Evaluate & Predict"):
-            engine.manager.add_elems("eval", create_eval_tab(engine))
-
+            ui_engine.manager.add_elems("eval", create_eval_tab(ui_engine))
         with gr.Tab("Chat"):
-            engine.manager.add_elems("infer", create_infer_tab(engine))
-
+            ui_engine.manager.add_elems("infer", create_infer_tab(ui_engine))
         if not demo_mode:
             with gr.Tab("Export"):
-                engine.manager.add_elems("export", create_export_tab(engine))
+                ui_engine.manager.add_elems("export", create_export_tab(ui_engine))
 
-        demo.load(engine.resume, outputs=engine.manager.get_elem_list(), concurrency_limit=None)
-        lang.change(engine.change_lang, [lang], engine.manager.get_elem_list(), queue=False)
+        all_elems = ui_engine.manager.get_elem_list()
+
+        def bind_engine_to_ui(engine: Engine):
+            # Use one UI mapping template
+            # TODO: change naming (just testing session name for now)
+            engine.manager = ui_engine.manager
+
+        def on_load(request: gr.Request):
+            sid = request.session_hash
+            engine = session_store.get_or_create_engine(sid, demo_mode=demo_mode, pure_chat=False)
+
+            # 只做 debug：回傳 session 與 label；UI 其它元件先不動
+            # all_elems 需要回傳對應數量，所以填 None/空值
+            return [sid, f"✅ session_hash = `{sid}` (engine_id={id(engine)})"] + [None] * len(all_elems)
+
+        demo.load(
+            on_load,
+            inputs=[],
+            # only output session for check
+            outputs=[session_id, session_label],  # , *all_elems],
+            concurrency_limit=None,
+        )
+
+        # def on_lang_change(lang_value, sid, request: gr.Request):
+        #     sid = sid or request.session_hash
+        #     engine = session_store.get_or_create_engine(sid, demo_mode=demo_mode, pure_chat=False)
+        #     bind_engine_to_ui(engine)
+        #     return engine.change_lang(lang_value)
+
+        # for session check
+        def on_lang_change(lang_value, sid, request: gr.Request):
+            sid = sid or request.session_hash
+            engine = session_store.get_or_create_engine(sid, demo_mode=demo_mode, pure_chat=False)
+            return f"✅ lang={lang_value} | session={sid} | engine_id={id(engine)}"
+
+        lang.change(
+            on_lang_change,
+            inputs=[lang, session_id],
+            outputs=all_elems,
+            queue=False,
+        )
+
         lang.input(save_config, inputs=[lang], queue=False)
 
     return demo
