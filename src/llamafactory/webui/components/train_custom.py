@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from transformers.trainer_utils import SchedulerType
 
@@ -21,6 +21,7 @@ from ...extras.misc import get_device_count
 from ...extras.packages import is_gradio_available
 from ..common import DEFAULT_DATA_DIR
 from ..control import change_stage, list_checkpoints, list_config_paths, list_datasets, list_output_dirs
+from ..session_store import session_store
 from .data_custom import create_preview_box
 
 
@@ -34,7 +35,65 @@ if TYPE_CHECKING:
     from ..engine import Engine
 
 
-def create_train_tab(engine: "Engine") -> dict[str, "Component"]:
+def create_train_tab(
+    engine: "Engine",
+    *,
+    engine_resolver: "Callable[[gr.Request], Engine] | None" = None,
+    bind_engine_to_ui: "Callable[[Engine], None] | None" = None,
+) -> dict[str, "Component"]:
+    """Summary.
+
+    engine: 用來建 UI template 的 ui_engine
+    engine_resolver: (request)-> task_engine，依 session 取回
+    bind_engine_to_ui: 讓 task_engine.manager 指向 ui_engine.manager（你已經在 create_ui 做過，也可在這裡保險）
+    """
+
+    # ---------- helpers ----------
+    def _resolve_task_engine(request: "gr.Request | None") -> "Engine":
+        if request is None:
+            raise RuntimeError("No gr.Request provided; cannot resolve session_hash.")
+
+        if engine_resolver is not None:
+            task_engine = engine_resolver(request)
+        else:
+            sid = request.session_hash
+            task_engine = session_store.get_or_create_engine(
+                sid,
+                demo_mode=getattr(engine, "demo_mode", False),
+                pure_chat=getattr(engine, "pure_chat", False),
+            )
+
+        # 綁 manager（讓 task_engine 的 runner 用同一組 UI components mapping）
+        if bind_engine_to_ui is not None:
+            bind_engine_to_ui(task_engine)
+        else:
+            task_engine.manager = engine.manager
+
+        return task_engine
+
+    def _dispatch_runner(method_name: str, *, with_data: bool):
+        """
+        讓 event 永遠打到「task_engine.runner.<method_name>」
+        with_data=True -> 需要把 inputs 組成 data: dict[Component, Any]
+        with_data=False -> 直接呼叫（例如 set_abort / monitor）
+        """
+
+        # 注意：request 必須是 kw-only 且可為 None（不同 Gradio event 可能傳/不傳）
+        def _fn(*vals, request: "gr.Request | None" = None):
+            task_engine = _resolve_task_engine(request)
+            runner = task_engine.runner
+            method = getattr(runner, method_name)
+
+            if with_data:
+                # ⚠️ 關鍵：inputs 的順序一定要跟你在 .click(..., inputs=...) 傳入的一樣
+                data = {comp: v for comp, v in zip(_inputs_list, vals)}
+                return method(data)
+            else:
+                return method()
+
+        return _fn
+
+    # UI bind template
     input_elems = engine.manager.get_base_elems()
     elem_dict = dict()
 
@@ -364,6 +423,7 @@ def create_train_tab(engine: "Engine") -> dict[str, "Component"]:
         )
     )
 
+    # Buttons
     with gr.Row():
         cmd_preview_btn = gr.Button()
         arg_save_btn = gr.Button()
@@ -415,33 +475,71 @@ def create_train_tab(engine: "Engine") -> dict[str, "Component"]:
         )
     )
     output_elems = [output_box, progress_bar, loss_viewer, swanlab_link]
+    _inputs_list = list(input_elems)
 
-    cmd_preview_btn.click(engine.runner.preview_train, input_elems, output_elems, concurrency_limit=None)
-    start_btn.click(engine.runner.run_train, input_elems, output_elems)
-    stop_btn.click(engine.runner.set_abort)
-    resume_btn.change(engine.runner.monitor, outputs=output_elems, concurrency_limit=None)
+    # Events
+    cmd_preview_btn.click(
+        _dispatch_runner("preview_train", with_data=True),
+        inputs=_inputs_list,
+        outputs=output_elems,
+        concurrency_limit=None,
+    )
 
+    start_btn.click(
+        _dispatch_runner("run_train", with_data=True),
+        inputs=_inputs_list,
+        outputs=output_elems,
+    )
+
+    stop_btn.click(
+        _dispatch_runner("set_abort", with_data=False),
+        inputs=[],
+        outputs=[],
+    )
+
+    resume_btn.change(
+        _dispatch_runner("monitor", with_data=False),
+        inputs=[],
+        outputs=output_elems,
+        concurrency_limit=None,
+    )
+
+    # 下面這些如果需要用到 engine.manager.get_elem_by_id，請保持用 template engine 的 manager 取元件
     lang = engine.manager.get_elem_by_id("top.lang")
     model_name: gr.Dropdown = engine.manager.get_elem_by_id("top.model_name")
     finetuning_type: gr.Dropdown = engine.manager.get_elem_by_id("top.finetuning_type")
 
-    arg_save_btn.click(engine.runner.save_args, input_elems, output_elems, concurrency_limit=None)
-    arg_load_btn.click(
-        engine.runner.load_args, [lang, config_path], list(input_elems) + [output_box], concurrency_limit=None
+    arg_save_btn.click(
+        _dispatch_runner("save_args", with_data=True),
+        inputs=_inputs_list,
+        outputs=output_elems,
+        concurrency_limit=None,
     )
 
+    arg_load_btn.click(
+        _dispatch_runner("load_args", with_data=True),
+        inputs=[lang, config_path],
+        outputs=_inputs_list + [output_box],
+        concurrency_limit=None,
+    )
+
+    # 這些是純 list_xxx 不牽涉 engine 狀態，可以維持不動
     dataset.focus(list_datasets, [dataset_dir, training_stage], [dataset], queue=False)
     training_stage.change(change_stage, [training_stage], [dataset, packing], queue=False)
-    reward_model.focus(list_checkpoints, [model_name, finetuning_type], [reward_model], queue=False)
+    reward_model = elem_dict.get("reward_model")  # 如果你上面有建 reward_model 才需要
+    if reward_model is not None:
+        reward_model.focus(list_checkpoints, [model_name, finetuning_type], [reward_model], queue=False)
+
     model_name.change(list_output_dirs, [model_name, finetuning_type, current_time], [output_dir], queue=False)
     finetuning_type.change(list_output_dirs, [model_name, finetuning_type, current_time], [output_dir], queue=False)
     output_dir.change(
         list_output_dirs, [model_name, finetuning_type, current_time], [output_dir], concurrency_limit=None
     )
+
     output_dir.input(
-        engine.runner.check_output_dir,
-        [lang, model_name, finetuning_type, output_dir],
-        list(input_elems) + [output_box],
+        _dispatch_runner("check_output_dir", with_data=True),
+        inputs=[lang, model_name, finetuning_type, output_dir],
+        outputs=_inputs_list + [output_box],
         concurrency_limit=None,
     )
     config_path.change(list_config_paths, [current_time], [config_path], queue=False)

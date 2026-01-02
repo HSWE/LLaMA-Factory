@@ -43,9 +43,17 @@ def create_ui(demo_mode: bool = False) -> "gr.Blocks":
     hostname = os.getenv("HOSTNAME", os.getenv("COMPUTERNAME", platform.node())).split(".")[0]
 
     with gr.Blocks(title=f"LLaMA Factory ({hostname})", css=CSS) as demo:
+
+        def resolve_engine(req: gr.Request) -> Engine:
+            return session_store.get_or_create_engine(req.session_hash, demo_mode=demo_mode, pure_chat=False)
+
+        def bind_engine_to_ui(task_engine: Engine):
+            # Use one UI mapping template
+            # TODO: change naming (just testing session name for now)
+            task_engine.manager = ui_engine.manager
+
         # get session id
         session_id = gr.State()
-        session_label = gr.Markdown()
 
         title = gr.HTML()
         subtitle = gr.HTML()
@@ -70,7 +78,14 @@ def create_ui(demo_mode: bool = False) -> "gr.Blocks":
 
         # Train/Val/Infer config tabs
         with gr.Tab("Train"):
-            ui_engine.manager.add_elems("train", create_train_tab(ui_engine))
+            ui_engine.manager.add_elems(
+                "train",
+                create_train_tab(
+                    ui_engine,
+                    engine_resolver=resolve_engine,
+                    bind_engine_to_ui=bind_engine_to_ui,
+                ),
+            )
         with gr.Tab("Evaluate & Predict"):
             ui_engine.manager.add_elems("eval", create_eval_tab(ui_engine))
         with gr.Tab("Chat"):
@@ -81,24 +96,25 @@ def create_ui(demo_mode: bool = False) -> "gr.Blocks":
 
         all_elems = ui_engine.manager.get_elem_list()
 
-        def bind_engine_to_ui(engine: Engine):
-            # Use one UI mapping template
-            # TODO: change naming (just testing session name for now)
-            engine.manager = ui_engine.manager
-
         def on_load(request: gr.Request):
             sid = request.session_hash
-            engine = session_store.get_or_create_engine(sid, demo_mode=demo_mode, pure_chat=False)
 
-            # 只做 debug：回傳 session 與 label；UI 其它元件先不動
-            # all_elems 需要回傳對應數量，所以填 None/空值
-            return [sid, f"✅ session_hash = `{sid}` (engine_id={id(engine)})"] + [None] * len(all_elems)
+            task_engine = session_store.get_or_create_engine(
+                sid,
+                demo_mode=demo_mode,
+                pure_chat=False,
+            )
+
+            print("ui_engine_id =", id(ui_engine), "sid =", sid, "task_engine_id =", id(task_engine))
+
+            bind_engine_to_ui(task_engine)
+
+            yield from task_engine.resume()
 
         demo.load(
             on_load,
             inputs=[],
-            # only output session for check
-            outputs=[session_id, session_label],  # , *all_elems],
+            outputs=all_elems,
             concurrency_limit=None,
         )
 
@@ -109,14 +125,27 @@ def create_ui(demo_mode: bool = False) -> "gr.Blocks":
         #     return engine.change_lang(lang_value)
 
         # for session check
-        def on_lang_change(lang_value, sid, request: gr.Request):
-            sid = sid or request.session_hash
-            engine = session_store.get_or_create_engine(sid, demo_mode=demo_mode, pure_chat=False)
-            return f"✅ lang={lang_value} | session={sid} | engine_id={id(engine)}"
+        # def on_lang_change(lang_value, sid, request: gr.Request):
+        #     sid = sid or request.session_hash
+        #     task_engine = session_store.get_or_create_engine(sid, demo_mode=demo_mode, pure_chat=False)
+        #     bind_engine_to_ui(task_engine)
+        #     return (
+        #         f"✅ ui_engine_id={ui_engine_id}\n\n"
+        #         f"✅ lang=`{lang_value}`\n\n"
+        #         f"✅ session_hash=`{sid}`\n\n"
+        #         f"✅ task_engine_id={id(task_engine)}"
+        #     )
+
+        def on_lang_change(lang_value, request: gr.Request | None = None):
+            task_engine = session_store.get_or_create_engine(
+                request.session_hash, demo_mode=demo_mode, pure_chat=False
+            )
+            bind_engine_to_ui(task_engine)
+            return task_engine.change_lang(lang_value)
 
         lang.change(
             on_lang_change,
-            inputs=[lang, session_id],
+            inputs=[lang],
             outputs=all_elems,
             queue=False,
         )
