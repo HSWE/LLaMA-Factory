@@ -43,23 +43,23 @@ def fetch_training_tasks():
 
 def create_top() -> dict[str, "Component"]:
     # change top layouts: add task list
-    with gr.Row():
-        task_list = gr.Dataframe(
-            headers=["user", "job_id", "status", "model", "progress"],
-            row_count=8,
-            col_count=5,
-            interactive=False,
-            wrap=True,
-            label="Current training tasks",
-        )
+    # with gr.Row():
+    #     task_list = gr.Dataframe(
+    #         headers=["user", "job_id", "status", "model", "progress"],
+    #         row_count=8,
+    #         col_count=5,
+    #         interactive=False,
+    #         wrap=True,
+    #         label="Current training tasks",
+    #     )
 
-        # add task list event (periodic refresh):
-        task_timer = gr.Timer(2.0)
-        task_timer.tick(
-            fn=fetch_training_tasks,
-            outputs=[task_list],
-            queue=False,
-        )
+    #     # add task list event (periodic refresh):
+    #     task_timer = gr.Timer(2.0)
+    #     task_timer.tick(
+    #         fn=fetch_training_tasks,
+    #         outputs=[task_list],
+    #         queue=False,
+    #     )
 
     with gr.Row():
         lang = gr.Dropdown(choices=["en", "ru", "zh", "ko", "ja"], value=None, scale=1)
@@ -111,5 +111,5 @@ def create_top() -> dict[str, "Component"]:
         template=template,
         rope_scaling=rope_scaling,
         booster=booster,
-        task_list=task_list,
+        # task_list=task_list,
     )
