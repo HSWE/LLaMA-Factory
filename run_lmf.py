@@ -1,7 +1,12 @@
 #!/home/hswe_junas/projects/LLaMA-Factory/.venv/bin/python3
 import sys
 
+from dotenv import load_dotenv
+
 from llamafactory.cli_custom import main
+
+
+load_dotenv()
 
 
 if __name__ == "__main__":

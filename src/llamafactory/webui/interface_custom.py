@@ -115,6 +115,7 @@ def run_web_ui() -> None:
         server_name=server_name,
         server_port=server_port,
         inbrowser=True,
+        auth=(os.getenv("GRADIO_AUTH_USER"), os.getenv("GRADIO_AUTH_PASS")),
     )
 
 

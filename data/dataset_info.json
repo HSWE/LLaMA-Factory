@@ -730,5 +730,8 @@
       "prompt": "content"
     },
     "folder": "python"
+  },
+  "identity_test": {
+    "file_name": "uploads/identity_test.json"
   }
 }

@@ -14,6 +14,9 @@
 
 import json
 import os
+import shutil
+from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ...extras.constants import DATA_CONFIG
@@ -84,13 +87,71 @@ def get_preview(dataset_dir: str, dataset: list, page_index: int) -> tuple[int, 
 
 
 # TODO:
-# def upload_dataset()
+def upload_dataset(
+    dataset_dir: str,
+    file_obj,
+) -> tuple["gr.Dropdown", "gr.Button"]:
+    """Upload dataset function.
+
+    file_obj: Gradio upload file object
+    return: update dataset dropdown choices + change preview button status
+    """
+    if file_obj is None:
+        return gr.Dropdown(), gr.Button()
+
+    dataset_dir_p = Path(dataset_dir).expanduser().resolve()
+    dataset_dir_p.mkdir(parents=True, exist_ok=True)
+
+    # upload directory
+    uploads_dir = dataset_dir_p / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    # temp file directory
+    tmp_path = Path(file_obj.name).resolve()
+
+    # destination file name
+    dst_name = tmp_path.name
+    dst_path = uploads_dir / dst_name
+
+    # if same filename, add time stamp
+    if dst_path.exists():
+        stem, suffix = dst_path.stem, dst_path.suffix
+        dst_path = uploads_dir / f"{stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{suffix}"
+
+    shutil.copy2(tmp_path, dst_path)
+
+    # Update dataset_info.json
+    config_path = dataset_dir_p / DATA_CONFIG
+    try:
+        if config_path.exists():
+            with open(config_path, encoding="utf-8") as f:
+                dataset_info = json.load(f)
+        else:
+            dataset_info = {}
+    except Exception:
+        dataset_info = {}
+
+    dataset_key = dst_path.stem
+
+    rel_file = str(dst_path.relative_to(dataset_dir_p))
+    dataset_info[dataset_key] = {"file_name": rel_file}
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(dataset_info, f, ensure_ascii=False, indent=2)
+
+    return gr.Dropdown(choices=sorted(dataset_info.keys()), value=dataset_key), gr.Button()
 
 
 def create_preview_box(dataset_dir: "gr.Textbox", dataset: "gr.Dropdown") -> dict[str, "Component"]:
     # Min_width of column > 160, set small for smaller button
     with gr.Column(min_width=160):
-        data_upload_btn = gr.Button(interactive=True, scale=1)
+        data_upload_btn = gr.UploadButton(
+            "Upload dataset",
+            interactive=True,
+            scale=1,
+            file_types=[".json", ".jsonl", ".txt"],
+            file_count="single",
+        )
         data_preview_btn = gr.Button(interactive=False, scale=1)
 
     with gr.Column(visible=False, elem_classes="modal-box") as preview_box:
@@ -120,10 +181,18 @@ def create_preview_box(dataset_dir: "gr.Textbox", dataset: "gr.Dropdown") -> dic
     )
     close_btn.click(lambda: gr.Column(visible=False), outputs=[preview_box], queue=False)
 
-    # TODO: click upload dataset
-    data_upload_btn.click(
-        get_preview, [dataset_dir, dataset, page_index], [preview_count, preview_samples, preview_box], queue=False
+    data_upload_btn.upload(
+        upload_dataset,
+        inputs=[dataset_dir, data_upload_btn],
+        outputs=[dataset, data_preview_btn],
+        queue=False,
+    ).then(
+        can_preview,
+        [dataset_dir, dataset],
+        [data_preview_btn],
+        queue=False,
     )
+
     return dict(
         data_preview_btn=data_preview_btn,
         data_upload_btn=data_upload_btn,

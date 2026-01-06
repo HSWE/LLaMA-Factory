@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Mapping the text of components.
+# Aware of "label" or "value" for different components.
+
 LOCALES = {
     "title": {
         "en": {
@@ -368,19 +371,19 @@ LOCALES = {
     },
     "data_upload_btn": {
         "en": {
-            "value": "Upload dataset",
+            "label": "Upload dataset",
         },
         "ru": {
-            "value": "Просмотреть набор данных",
+            "label": "Просмотреть набор данных",
         },
         "zh": {
-            "value": "预览数据集",
+            "label": "预览数据集",
         },
         "ko": {
-            "value": "데이터셋 미리보기",
+            "label": "데이터셋 미리보기",
         },
         "ja": {
-            "value": "データセットをプレビュー",
+            "label": "データセットをプレビュー",
         },
     },
     "preview_count": {
